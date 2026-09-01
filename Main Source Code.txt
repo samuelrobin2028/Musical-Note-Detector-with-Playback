@@ -1,0 +1,527 @@
+//Engineers: Eric Thelen, Ethan Coss, Samuel Robin, and Tim Liu 
+//Title: Musical Note Detector with playback feature
+//Date: August 7, 2026, Class: ECE 3720 Microprocessors summer 2026 semester
+//Oakland University in Rochester, MI, USA
+//-----------------------------------------------
+//Standard Libraries used limited to C only 
+//The C library in code warrior appears to be very old
+//-----------------------------------------------
+#include <hidef.h>     
+#include "derivative.h"
+#include <math.h>
+//-----------------------------------------------
+//Declaring the populated functions
+//-----------------------------------------------
+void SerCom0(unsigned char data);
+void MSDelay(unsigned int);
+void initialize(void);
+void set_clock_24mhz(void);
+void calculateDFT(void);
+void trig(void);
+void config7seg();
+void hexchar(unsigned int m);
+//-----------------------------------------------
+//Variables: This list grew as ones that were needed became apparent
+//-----------------------------------------------
+int i,k,n;
+int output[128];
+double inputRe[128];
+double inputIm[128];
+double outputRe[128];
+double outputIm[128];
+double values[128];
+double trigRe[128];
+double trigIm[128];
+unsigned int holder;
+unsigned int index[5];
+unsigned int index2[5];
+unsigned int val1, val2, val3, val4, val5, counter;
+//-----------------------------------------------
+//Setting up the Putty, increasing bus clock, Pre-populating DFT sinusoids
+//starting up the 7 segment displays, initializing variables to zero
+//-----------------------------------------------
+void main(void) {
+initialize();
+set_clock_24mhz();
+trig();
+config7seg();
+val1, val2, val3, val4, val5 = 0;
+counter = 0; 
+//-----------------------------------------------
+//Getting the analog conversion started
+//-----------------------------------------------
+DDRP |=  0b00001111;                   
+PTP |=   0b00001111;                  
+ATD1CTL2 = 0b10000000;                
+    
+MSDelay(2);                          
+	
+ATD1CTL3 = 0b00001000;                
+ATD1CTL4 = 0b11101011;
+//-----------------------------------------------
+//After initializing, the continuous loop the code runs in
+//-----------------------------------------------    
+while(1){
+
+    values[63] = 0;
+    holder = 0;
+//-----------------------------------------------
+//Monitors the analog pin to see if it breaks a certain volume level
+//We found this 170 by testing what activated the mic
+//-----------------------------------------------    
+while(holder <= 170)
+{
+    ATD1CTL5 = 0b10000011;                
+
+    while(!(ATD1STAT0 & 0x80));
+    
+    holder = (int)(ATD1DR0L);
+    
+    MSDelay(.5);
+}
+//-----------------------------------------------
+//The loop samples the audio 128 times for the DFT every 2ms
+//which was found to print a solid sound waveform for analysis
+//----------------------------------------------- 
+for(k = 0;k<=127;k++)
+{
+    ATD1CTL5 = 0b10000011;                
+
+    while(!(ATD1STAT0 & 0x80));
+    
+    holder = (int)(ATD1DR0L); 
+    
+    values[k] = holder;
+    
+    MSDelay(2);                        
+}
+//-----------------------------------------------
+//The DFT is picky about input, we initially tried feeding it the 
+//raw values, but it likes them centered on amplitude = 0
+//128 is the midpoint between the analog sampling step of 256
+//-----------------------------------------------
+for(i = 0; i < 128; i++)
+{
+    values[i] = values[i] - 128;
+}
+//-----------------------------------------------
+//Clear the global counters, run the DFT
+//-----------------------------------------------
+i = 0;
+k = 0;
+calculateDFT();
+i = 0;
+val5 = 0;
+val4 = 0;
+//-----------------------------------------------
+//The is a list of one octave of notes on a keyboard
+//We chose the center octave of 3
+//A testbench was implemented to collect multiple presses
+//of each note. 
+//We found the key signature of our DFT then had these
+//statements check those particular bins
+//Sercom0 prints to Putty, Val5 declares the note to save
+//val4 indicates whether the note is sharped
+//in the event no note is detected val4 and val5 = 0
+//-----------------------------------------------
+if(output[39] >= 900 & output[47] >= 900){
+   SerCom0('C');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 12;
+} 
+else if(output[39] >= 900 & output[41] >= 900){
+   SerCom0('C');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 12;
+} 
+//-------------------------------------------------
+else if(output[40] >= 900 & output[41] >= 900){
+   SerCom0('C');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 12;
+   val4 = 5;
+}
+//-------------------------------------------------
+else if(output[10] >= 900 & output[11] >= 900){
+   SerCom0('D');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 13;
+}
+else if(output[9] >= 900 & output[10] >= 900){
+   SerCom0('D');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 13;
+} 
+//-------------------------------------------------
+else if(output[7] >= 900 & output[8] >= 900){
+   SerCom0('D');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 13;
+   val4 = 5;
+} 
+else if(output[32] >= 900 & output[33] >= 900){
+   SerCom0('D');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 13;
+   val4 = 5;
+}
+//-------------------------------------------------
+else if(output[2] >= 900 & output[4] >= 900){
+   SerCom0('E');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 14;
+}
+else if(output[3] >= 900 & output[4] >= 900){
+   SerCom0('E');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 14;
+}
+//-------------------------------------------------
+else if(output[27] >= 1400){
+   SerCom0('F');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 15;
+}
+//-------------------------------------------------
+else if(output[10] >= 900 & output[59] >= 900){
+   SerCom0('F');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 15;
+   val4 = 5;
+}
+else if(output[59] >= 1300){
+   SerCom0('F');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 15;
+   val4 = 5;
+}
+//-------------------------------------------------
+else if(output[58] >= 900 & output[59] >= 900){
+   SerCom0('G');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 9;
+}
+else if(output[59] >= 3000){
+   SerCom0('G');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 9;
+}
+//-------------------------------------------------
+else if(output[0] >= 900 & output[2] >= 900){
+   SerCom0('G');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 9;
+   val4 = 5;
+}
+else if(output[1] >= 900 & output[2] >= 900){
+   SerCom0('G');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 9;
+   val4 = 5;
+}
+else if(output[2] >= 900 & output[3] >= 900){
+   SerCom0('G');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 9;
+   val4 = 5;
+}
+//-------------------------------------------------
+else if(output[38] >= 900 & output[48] >= 900){
+   SerCom0('A');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 10;
+}
+else if(output[38] >= 900 & output[49] >= 900){
+   SerCom0('A');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 10;
+}
+else if(output[48] >= 900 & output[49] >= 900){
+   SerCom0('A');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 10;
+}
+//-------------------------------------------------
+else if(output[32] >= 900 & output[33] >= 900 & output[49] >= 900){
+   SerCom0('A');
+   SerCom0('#');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 10;
+   val4 = 5;
+}
+//-------------------------------------------------
+else if(output[6] >= 900 & output[7] >= 900){
+   SerCom0('B');
+   SerCom0(13); 
+   SerCom0(10);
+   val5 = 11;
+} 
+else {val5 = 0; val4 = 0;}
+//-------------------------------------------------
+//This statement checks to see if a note was found
+//it then counts up the 5 notes for playback and writes them 
+//for later recall
+//-----------------------------------------------
+if(val5 > 0){
+index[counter] = val5;
+index2[counter] = val4;
+counter++; 
+}
+//-----------------------------------------------
+//This statment looks to see if the 5th note has been filled
+//When it detects 5 full notes, it sequentially plays them
+//back on the 7 segment display a regular note "A"
+//chases "A0" a sharp note "A#" chases "AS"
+//-----------------------------------------------
+if(index[4] > 0){
+  hexchar(index[0]);
+  PTP_PTP0 =0;
+  PTP_PTP1 =1;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(100);
+  hexchar(index2[0]);
+  PTP_PTP0 =1;
+  PTP_PTP1 =0;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(250);
+  hexchar(index[1]);
+  PTP_PTP0 =0;
+  PTP_PTP1 =1;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(100);
+  hexchar(index2[1]);
+  PTP_PTP0 =1;
+  PTP_PTP1 =0;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(250);
+  hexchar(index[2]);
+  PTP_PTP0 =0;
+  PTP_PTP1 =1;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(100);
+  hexchar(index2[2]);
+  PTP_PTP0 =1;
+  PTP_PTP1 =0;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(250);
+  hexchar(index[3]);
+  PTP_PTP0 =0;
+  PTP_PTP1 =1;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(100);
+  hexchar(index2[3]);
+  PTP_PTP0 =1;
+  PTP_PTP1 =0;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(250);
+  hexchar(index[4]);
+  PTP_PTP0 =0;
+  PTP_PTP1 =1;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(100);
+  hexchar(index2[4]);
+  PTP_PTP0 =1;
+  PTP_PTP1 =0;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  MSDelay(250);
+  PTP_PTP0 =1;
+  PTP_PTP1 =1;
+  PTP_PTP2 =1;
+  PTP_PTP3 =1;
+  val1, val2, val3, val4, val5 = 0;
+  index[0] = 0;
+  index[1] = 0;
+  index[2] = 0;
+  index[3] = 0;
+  index[4] = 0;
+  index2[0] = 0;
+  index2[1] = 0;
+  index2[2] = 0;
+  index2[3] = 0;
+  index2[4] = 0;
+} else {}
+//-----------------------------------------------
+//Reset all the counters and holders to zero
+//-----------------------------------------------
+val5 = 0;
+val4 = 0;
+}
+}
+//-----------------------------------------------
+//Putty Communication protocol
+//-----------------------------------------------
+void SerCom0(unsigned char data)
+  {
+    while(!(SCI0SR1 & 0x80));
+    SCI0DRL=data;  
+  }
+//-----------------------------------------------
+//Putty initialization protocol
+//-----------------------------------------------
+void initialize(void){
+    SCI0BDH = 0;
+    SCI0BDL = 156;
+    SCI0CR1 = 0;
+    SCI0CR2 = 0x0C; 
+  }
+//-----------------------------------------------
+//Increase clock frequency
+//-----------------------------------------------
+void set_clock_24mhz(void){
+    SYNR = 0x02;
+    REFDV = 0x00;
+    PLLCTL = 0x60;
+    while(!(0x08 & CRGFLG));
+    CLKSEL |= 0x80;
+  }
+//-----------------------------------------------
+//timer function
+//-----------------------------------------------
+void MSDelay(unsigned int itime) 
+  {
+    unsigned int i, j;
+    for(i=0;i<itime;i++)
+      for(j=0;j<24000;j++);
+  }
+//-----------------------------------------------
+//DFT algorithm derived from source:
+//https://www.geeksforgeeks.org/c/discrete-fourier-transform-and-its-inverse-using-c/
+//Citation in report and presentation
+//It was difficult to find a standard library written in pure C for code warrior
+//It appeared that some of the C libraries were written in 2001 as well making compatibility a problem
+//In the end, a simple DFT adapted for <math.h> worked the best
+//-----------------------------------------------
+void calculateDFT(void)
+{
+    k = 0;
+    n = 0;
+    i = 0;
+
+    for (k = 0; k < 128; k++) {
+        inputRe[k] = 0;
+        inputIm[k] = 0;
+        for (n = 0; n < 128; n++) {
+            i = k * n;
+            while(i > 127){
+              i = i - 128;
+            }
+            inputRe[k] = inputRe[k] + values[n] * trigRe[i];
+            inputIm[k] = inputIm[k] - values[n] * trigIm[i];
+        }
+        n = 0;
+        i = 0;
+        output[k] = (int)sqrt(inputRe[k] * inputRe[k] + inputIm[k] * inputIm[k]);
+    }
+    k = 0;
+    n = 0;
+    i = 0;
+}
+//-----------------------------------------------
+//A trig function to be called for generating DFT sinusoidal portions 
+//reference https://stackoverflow.com/questions/13466623/
+//Citation in report and presentation
+//-----------------------------------------------
+void trig(void)
+{
+    k = 0;
+    n = 0;
+    
+        for (n = 0; n < 128; n++) {
+            trigRe[n] = (double)cos(2 * 3.141592 * (double)n * 0.0078125);
+            trigIm[n] = (double)sin(2 * 3.141592 * (double)n * 0.0078125);
+        }
+        
+    k = 0;
+    n = 0;
+}
+//-----------------------------------------------
+//Initializing the 7 segment displays
+//-----------------------------------------------
+void config7seg() 
+{
+DDRB = 0xFF;
+DDRP_DDRP0 = 1;
+DDRP_DDRP1 = 1;
+DDRP_DDRP2 = 1;
+DDRP_DDRP3 = 1;
+} 
+//-----------------------------------------------
+//A lookup table for all the characters that can be printed to 
+//to the 7 segment displays
+//-----------------------------------------------
+void hexchar(unsigned int m) 
+{
+if(m == 0)//0 
+{PORTB = 0b00111111;}
+else if(m == 1)//1
+{PORTB = 0b00000110;}
+else if(m == 2)//2
+{PORTB = 0b01011011;}
+else if(m == 3)//3
+{PORTB = 0b01001111;}
+else if(m == 4)//4
+{PORTB = 0b01100110;}
+else if(m == 5)//5
+{PORTB = 0b01101101;}
+else if(m == 6)//6
+{PORTB = 0b01111101;}
+else if(m == 7)//7
+{PORTB = 0b00000111;}
+else if(m == 8)//8
+{PORTB = 0b01111111;}
+else if(m == 9)//9
+{PORTB = 0b01101111;}
+else if(m == 10)//A
+{PORTB = 0b01110111;}
+else if(m == 11)//b
+{PORTB = 0b01111100;}
+else if(m == 12)//C
+{PORTB = 0b00111001;}
+else if(m == 13)//d
+{PORTB = 0b01011110;}
+else if(m == 14)//E
+{PORTB = 0b01111001;}
+else if(m == 15)//F
+{PORTB = 0b01110001;} 
+else {}
+}
+//-----------------------------------------------
